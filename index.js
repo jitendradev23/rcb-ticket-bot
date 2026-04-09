@@ -47,6 +47,7 @@ async function checkTickets() {
   } catch (err) {
     console.error("Error:", err.message);
   }
+  console.log("ALL ENV:", process.env);
 }
 
 // ⏱ Run every X seconds
