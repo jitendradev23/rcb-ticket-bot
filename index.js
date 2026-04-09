@@ -1,3 +1,6 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 import axios from "axios";
 import * as cheerio from "cheerio";
 import cron from "node-cron";
