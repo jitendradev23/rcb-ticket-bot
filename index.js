@@ -20,6 +20,8 @@ async function checkTickets() {
     // ✅ Correct detection
     const isAvailable = data.includes('"available":true');
 
+    console.log("CONFIG URL:", config.url);
+
     if (isAvailable && !lastStatus) {
       console.log("🔥 TICKETS AVAILABLE!");
 
