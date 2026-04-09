@@ -11,11 +11,9 @@ async function checkTickets() {
   try {
     console.log("Checking tickets...");
 
-    const { data } = await axios.get(config.url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0",
-      },
-    });
+    const { data } = await axios.get(
+  "https://shop.royalchallengers.com/products.json"
+);
 
     // ✅ Correct detection
     const isAvailable = data.includes('"available":true');
