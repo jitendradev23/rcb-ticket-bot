@@ -32,7 +32,7 @@ async function checkTickets() {
     // ✅ ONLY THIS (no duplicate variables)
     const buyButtons = await page.$$eval("button", (buttons) =>
       buttons.filter((b) =>
-        b.innerText.toLowerCase().includes("buy")
+        b.innerText.toUpperCase().includes("buy")
       ).length
     );
 
