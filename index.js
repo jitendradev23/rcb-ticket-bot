@@ -29,7 +29,9 @@ const text = data.toLowerCase();
 const hasBuyButton = text.includes("buy tickets");
 const isSoldOut = text.includes("sold out");
 
-const isAvailable = hasBuyButton && !isSoldOut;
+const isAvailable =
+  text.includes("buy tickets") &&
+  text.includes("rcb");
 
     
 
