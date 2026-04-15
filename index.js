@@ -55,7 +55,7 @@ const isAvailable = buyElements > 0;
       );
 
       lastStatus = true;
-    } else {
+    }  else if (!isAvailable) {
       console.log("❌ Still not available");
       lastStatus = false;
     }
