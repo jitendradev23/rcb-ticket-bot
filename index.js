@@ -17,11 +17,7 @@ async function checkTickets() {
 
     browser = await puppeteer.launch({
       headless: "new",
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-      ],
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
 
     const page = await browser.newPage();
@@ -30,24 +26,20 @@ async function checkTickets() {
       waitUntil: "domcontentloaded",
     });
 
-    // ⏳ Wait for dynamic content to load
-    await new Promise((resolve) => setTimeout(resolve, 5000));
+    // wait for UI
+    await new Promise((r) => setTimeout(r, 4000));
 
-    // 🎯 Detect BUY buttons (real UI detection)
+    // ✅ ONLY THIS (no duplicate variables)
     const buyButtons = await page.$$eval("button", (buttons) =>
-      buttons.filter((btn) =>
-        btn.innerText.toLowerCase().includes("buy")
+      buttons.filter((b) =>
+        b.innerText.toLowerCase().includes("buy")
       ).length
     );
 
-    console.log("Buy buttons found:", buyButtons);
+    console.log("Buy buttons:", buyButtons);
 
-    const isAvailable = buyButtons > 0;
-
-    if (isAvailable && !lastStatus) {
+    if (buyButtons > 0 && !lastStatus) {
       console.log("🔥 TICKETS AVAILABLE!");
-
-      playAlert();
 
       await sendTelegram(
         config.telegramToken,
@@ -55,12 +47,8 @@ async function checkTickets() {
         "🔥 RCB Tickets LIVE!\nhttps://shop.royalchallengers.com/ticket"
       );
 
-      // Open browser for quick action
-      await open("https://shop.royalchallengers.com/ticket");
-
       lastStatus = true;
-
-    } else if (!isAvailable) {
+    } else {
       console.log("❌ Still not available");
       lastStatus = false;
     }
@@ -69,9 +57,7 @@ async function checkTickets() {
     console.error("Error:", err.message);
 
   } finally {
-    if (browser) {
-      await browser.close();
-    }
+    if (browser) await browser.close();
   }
 }
 
