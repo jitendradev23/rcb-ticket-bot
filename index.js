@@ -14,26 +14,26 @@ async function checkTickets() {
   try {
     console.log("Checking tickets...");
 
-    const { data } = await axios.get(config.url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0",
-      },
-    });
+    const { data } = await axios.get(
+  "https://shop.royalchallengers.com/ticket",
+  {
+    headers: {
+      "User-Agent": "Mozilla/5.0",
+    },
+  }
+);
 
-    const products = data.products || [];
+const text = data.toLowerCase();
 
-    const ticketProducts = products.filter((product) =>
-      product.title.toLowerCase().includes("ticket") &&
-      product.title.toLowerCase().includes("rcb")
-    );
+// 🎯 Detect ticket availability
+const hasBuyButton = text.includes("buy tickets");
+const isSoldOut = text.includes("sold out");
 
-    const availableTickets = ticketProducts.filter((product) =>
-      product.variants.some((v) => v.available)
-    );
+const isAvailable = hasBuyButton && !isSoldOut;
 
-    console.log("Tickets found:", ticketProducts.length);
+    
 
-    if (availableTickets.length > 0 && !lastStatus) {
+    if (isAvailable && !lastStatus) {
       console.log("🔥 TICKETS AVAILABLE!");
 
       playAlert();
@@ -45,14 +45,14 @@ async function checkTickets() {
       await sendTelegram(
         config.telegramToken,
         config.chatId,
-        `🔥 RCB Tickets LIVE!\n\n${ticketNames}\n\n${config.url}`
+        "🔥 RCB Tickets LIVE!\nhttps://shop.royalchallengers.com/ticket"
       );
 
       await open("https://shop.royalchallengers.com");
 
       lastStatus = true;
 
-    } else if (availableTickets.length === 0) {
+    }  else if (!isAvailable){
       console.log("❌ Still not available");
       lastStatus = false;
     }
