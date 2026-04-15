@@ -18,6 +18,15 @@ await page.goto("https://shop.royalchallengers.com/ticket", {
 await new Promise((resolve) => setTimeout(resolve, 5000));
 
 // Get FULL rendered HTML
+
+const buyButtons = await page.$$eval("button", (buttons) =>
+  buttons.filter((btn) =>
+    btn.innerText.toLowerCase().includes("buy")
+  ).length
+);
+
+const isAvailable = buyButtons > 0;
+
 const content = await page.content();
 const text = content.toLowerCase();
 
