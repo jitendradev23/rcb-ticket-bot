@@ -1,50 +1,67 @@
-import axios from "axios";
+import puppeteer from "puppeteer";
 import crypto from "crypto";
-import * as cheerio from "cheerio";
 import cron from "node-cron";
 import { config } from "./config.js";
 import { sendTelegram } from "./notifier.js";
-
 import http from "http";
 
 let lastHash = "";
 let firstRun = true;
 
 async function checkTickets() {
+  let browser;
   try {
     console.log("Checking tickets...");
 
-    const { data } = await axios.get(config.url, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-      },
+    browser = await puppeteer.launch({
+      headless: "new",
+      args: [
+        "--no-sandbox",              // Required for Railway/Docker
+        "--disable-setuid-sandbox", // Required for Railway/Docker
+        "--disable-dev-shm-usage",  // Prevents crashes in low memory
+        "--disable-gpu",
+        "--no-zygote",
+        "--single-process",         // Important for Railway
+      ],
     });
 
-    // Try to detect ticket keywords directly in raw HTML
-    const lowerData = data.toLowerCase();
+    const page = await browser.newPage();
+
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
+    );
+
+    // Wait until network is idle so JS-rendered content loads
+    await page.goto(config.url, {
+      waitUntil: "networkidle2",
+      timeout: 30000,
+    });
+
+    // Extra wait for dynamic content
+    await new Promise((r) => setTimeout(r, 3000));
+
+    const content = await page.content();
+
+    const lowerContent = content.toLowerCase();
     const hasBuyNow =
-      lowerData.includes("buy now") ||
-      lowerData.includes("book now") ||
-      lowerData.includes("add to cart") ||
-      lowerData.includes("buy ticket");
+      lowerContent.includes("buy now") ||
+      lowerContent.includes("book now") ||
+      lowerContent.includes("add to cart") ||
+      lowerContent.includes("buy ticket") ||
+      lowerContent.includes("sold out") === false && lowerContent.includes("ticket");
 
     console.log("Page contains ticket keywords:", hasBuyNow);
 
-    const currentHash = crypto.createHash("md5").update(data).digest("hex");
+    const currentHash = crypto.createHash("md5").update(content).digest("hex");
     console.log("Hash:", currentHash);
 
     if (firstRun) {
       lastHash = currentHash;
       firstRun = false;
-      console.log("Initial snapshot saved.");
-      console.log("Ticket keywords on first run:", hasBuyNow);
+      console.log("✅ Initial snapshot saved");
       return;
     }
 
-    // Alert if hash changed OR if buy keywords appeared
     if (currentHash !== lastHash) {
       console.log("🔥 PAGE CHANGED!");
       lastHash = currentHash;
@@ -59,23 +76,30 @@ async function checkTickets() {
         await sendTelegram(
           config.telegramToken,
           config.chatId,
-          "⚠️ RCB ticket page updated (no buy button yet)\nhttps://shop.royalchallengers.com/ticket"
+          "⚠️ RCB ticket page updated!\nhttps://shop.royalchallengers.com/ticket"
         );
       }
     } else {
       console.log("❌ No change");
     }
+
   } catch (err) {
     console.error("Error:", err.message);
+  } finally {
+    // Always close browser to prevent memory leaks
+    if (browser) await browser.close();
   }
 }
 
-// Run immediately on start
+// Keep-alive HTTP server so Railway doesn't kill the container
+http
+  .createServer((req, res) => res.end("Bot running ✅"))
+  .listen(process.env.PORT || 3000, () =>
+    console.log("Keep-alive server started")
+  );
+
+// Run immediately
 checkTickets();
 
-http.createServer((req, res) => res.end("Bot is running")).listen(
-  process.env.PORT || 3000,
-  () => console.log("Keep-alive server started")
-);
-// Then run every X seconds
+// Then every X seconds
 cron.schedule(`*/${config.interval} * * * * *`, checkTickets);
