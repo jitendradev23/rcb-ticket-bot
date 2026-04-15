@@ -5,6 +5,8 @@ import cron from "node-cron";
 import { config } from "./config.js";
 import { sendTelegram } from "./notifier.js";
 
+import http from "http";
+
 let lastHash = "";
 let firstRun = true;
 
@@ -71,5 +73,9 @@ async function checkTickets() {
 // Run immediately on start
 checkTickets();
 
+http.createServer((req, res) => res.end("Bot is running")).listen(
+  process.env.PORT || 3000,
+  () => console.log("Keep-alive server started")
+);
 // Then run every X seconds
 cron.schedule(`*/${config.interval} * * * * *`, checkTickets);
