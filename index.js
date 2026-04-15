@@ -1,104 +1,109 @@
-import puppeteer from "puppeteer";
-import crypto from "crypto";
+import axios from "axios";
 import cron from "node-cron";
+import http from "http";
 import { config } from "./config.js";
 import { sendTelegram } from "./notifier.js";
-import http from "http";
 
-let lastHash = "";
+let wasAvailable = false;
 let firstRun = true;
 
 async function checkTickets() {
-  let browser;
   try {
     console.log("Checking tickets...");
 
-    browser = await puppeteer.launch({
-      headless: "new",
-      args: [
-        "--no-sandbox",              // Required for Railway/Docker
-        "--disable-setuid-sandbox", // Required for Railway/Docker
-        "--disable-dev-shm-usage",  // Prevents crashes in low memory
-        "--disable-gpu",
-        "--no-zygote",
-        "--single-process",         // Important for Railway
-      ],
-    });
-
-    const page = await browser.newPage();
-
-    await page.setUserAgent(
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
+    // Shopify products API - no browser needed, always server-rendered
+    const { data } = await axios.get(
+      "https://shop.royalchallengers.com/products.json?limit=250",
+      {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+        },
+        timeout: 15000,
+      }
     );
 
-    // Wait until network is idle so JS-rendered content loads
-    await page.goto(config.url, {
-      waitUntil: "networkidle2",
-      timeout: 30000,
+    const products = data.products || [];
+
+    // Find ticket-related products
+    const ticketProducts = products.filter((p) => {
+      const title = p.title.toLowerCase();
+      return (
+        title.includes("ticket") ||
+        title.includes("match") ||
+        title.includes("ipl") ||
+        title.includes("rcb") ||
+        title.includes("chinnaswamy")
+      );
     });
 
-    // Extra wait for dynamic content
-    await new Promise((r) => setTimeout(r, 3000));
+    console.log(`Found ${ticketProducts.length} ticket product(s)`);
 
-    const content = await page.content();
+    // Check if any variant is available
+    const availableTickets = ticketProducts.filter((p) =>
+      p.variants?.some((v) => v.available === true)
+    );
 
-    const lowerContent = content.toLowerCase();
-    const hasBuyNow =
-      lowerContent.includes("buy now") ||
-      lowerContent.includes("book now") ||
-      lowerContent.includes("add to cart") ||
-      lowerContent.includes("buy ticket") ||
-      lowerContent.includes("sold out") === false && lowerContent.includes("ticket");
-
-    console.log("Page contains ticket keywords:", hasBuyNow);
-
-    const currentHash = crypto.createHash("md5").update(content).digest("hex");
-    console.log("Hash:", currentHash);
+    const isAvailable = availableTickets.length > 0;
+    console.log("Tickets available:", isAvailable);
 
     if (firstRun) {
-      lastHash = currentHash;
+      wasAvailable = isAvailable;
       firstRun = false;
       console.log("✅ Initial snapshot saved");
+      if (isAvailable) {
+        console.log("🎟️ Tickets were already available on first check!");
+        await sendTelegram(
+          config.telegramToken,
+          config.chatId,
+          `🚨 RCB TICKETS ARE LIVE RIGHT NOW!\n\n${availableTickets.map((p) => `• ${p.title}`).join("\n")}\n\nhttps://shop.royalchallengers.com/ticket`
+        );
+      }
       return;
     }
 
-    if (currentHash !== lastHash) {
-      console.log("🔥 PAGE CHANGED!");
-      lastHash = currentHash;
+    if (isAvailable && !wasAvailable) {
+      // Tickets just went live!
+      console.log("🔥 TICKETS JUST WENT LIVE!");
+      wasAvailable = true;
 
-      if (hasBuyNow) {
-        await sendTelegram(
-          config.telegramToken,
-          config.chatId,
-          "🚨 RCB TICKETS ARE LIVE! Buy now!\nhttps://shop.royalchallengers.com/ticket"
-        );
-      } else {
-        await sendTelegram(
-          config.telegramToken,
-          config.chatId,
-          "⚠️ RCB ticket page updated!\nhttps://shop.royalchallengers.com/ticket"
-        );
-      }
+      const ticketList = availableTickets
+        .map((p) => `• ${p.title}`)
+        .join("\n");
+
+      await sendTelegram(
+        config.telegramToken,
+        config.chatId,
+        `🚨 RCB TICKETS ARE LIVE!\n\n${ticketList}\n\nBuy now 👉 https://shop.royalchallengers.com/ticket`
+      );
+
+    } else if (!isAvailable && wasAvailable) {
+      // Tickets just sold out
+      console.log("😔 Tickets sold out");
+      wasAvailable = false;
+
+      await sendTelegram(
+        config.telegramToken,
+        config.chatId,
+        "😔 RCB tickets are now sold out.\nhttps://shop.royalchallengers.com/ticket"
+      );
+
     } else {
-      console.log("❌ No change");
+      console.log("❌ No change —", isAvailable ? "still available" : "still not available");
     }
 
   } catch (err) {
     console.error("Error:", err.message);
-  } finally {
-    // Always close browser to prevent memory leaks
-    if (browser) await browser.close();
   }
 }
 
-// Keep-alive HTTP server so Railway doesn't kill the container
+// Keep Railway container alive
 http
-  .createServer((req, res) => res.end("Bot running ✅"))
+  .createServer((req, res) => res.end("RCB Bot running ✅"))
   .listen(process.env.PORT || 3000, () =>
-    console.log("Keep-alive server started")
+    console.log("Keep-alive server started on port", process.env.PORT || 3000)
   );
 
-// Run immediately
+// Run immediately on start
 checkTickets();
 
 // Then every X seconds
