@@ -27,23 +27,21 @@ async function checkTickets() {
     });
 
     // wait for UI
-    await new Promise((r) => setTimeout(r, 4000));
+   await page.waitForSelector("body", { timeout: 10000 });
 
+// extra wait for dynamic content
+await new Promise((r) => setTimeout(r, 5000));
     // ✅ ONLY THIS (no duplicate variables)
-   const buyElements = await page.$$eval("*", (elements) =>
-  elements.filter((el) => {
-    const text = el.innerText?.toLowerCase() || "";
-    return (
-      text.includes("buy tickets") ||
-      text.includes("buy") ||
-      text.includes("book")
-    );
-  }).length
-);
+  
 
-console.log("Buy elements found:", buyElements);
+const pageText = await page.evaluate(() => document.body.innerText.toLowerCase());
 
-const isAvailable = buyElements > 0;
+console.log("Page contains BUY:", pageText.includes("buy"));
+
+const isAvailable =
+  pageText.includes("buy tickets") ||
+  pageText.includes("book") ||
+  pageText.includes("buy");
 
     if (isAvailable && !lastStatus) {
       console.log("🔥 TICKETS AVAILABLE!");
