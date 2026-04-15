@@ -30,15 +30,22 @@ async function checkTickets() {
     await new Promise((r) => setTimeout(r, 4000));
 
     // ✅ ONLY THIS (no duplicate variables)
-    const buyButtons = await page.$$eval("button", (buttons) =>
-      buttons.filter((b) =>
-        b.innerText.toUpperCase().includes("buy")
-      ).length
+   const buyElements = await page.$$eval("*", (elements) =>
+  elements.filter((el) => {
+    const text = el.innerText?.toLowerCase() || "";
+    return (
+      text.includes("buy tickets") ||
+      text.includes("buy") ||
+      text.includes("book")
     );
+  }).length
+);
 
-    console.log("Buy buttons:", buyButtons);
+console.log("Buy elements found:", buyElements);
 
-    if (buyButtons > 0 && !lastStatus) {
+const isAvailable = buyElements > 0;
+
+    if (isAvailable && !lastStatus) {
       console.log("🔥 TICKETS AVAILABLE!");
 
       await sendTelegram(
