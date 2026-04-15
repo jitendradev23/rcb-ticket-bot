@@ -1,71 +1,54 @@
-import dotenv from "dotenv";
-dotenv.config();
+import axios from "axios";
+import crypto from "crypto";
 
-import puppeteer from "puppeteer";
-import cron from "node-cron";
-import open from "open";
-import { config } from "./config.js";
-import { sendTelegram, playAlert } from "./utils/notifier.js";
-
-let lastStatus = false;
+let lastHash = "";
+let firstRun = true;
 
 async function checkTickets() {
-  let browser;
-
   try {
     console.log("Checking tickets...");
 
-    browser = await puppeteer.launch({
-      headless: "new",
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    });
+    const { data } = await axios.get(
+      "https://shop.royalchallengers.com/ticket",
+      {
+        headers: {
+          "User-Agent": "Mozilla/5.0",
+        },
+      }
+    );
 
-    const page = await browser.newPage();
+    const currentHash = crypto
+      .createHash("md5")
+      .update(data)
+      .digest("hex");
 
-    await page.goto("https://shop.royalchallengers.com/ticket", {
-      waitUntil: "domcontentloaded",
-    });
+    console.log("Hash:", currentHash);
 
-    // wait for UI
-   await page.waitForSelector("body", { timeout: 10000 });
+    if (firstRun) {
+      lastHash = currentHash;
+      firstRun = false;
+      console.log("Initial snapshot saved");
+      return;
+    }
 
-// extra wait for dynamic content
-await new Promise((r) => setTimeout(r, 5000));
-    // ✅ ONLY THIS (no duplicate variables)
-  
-
-const pageText = await page.evaluate(() => document.body.innerText.toLowerCase());
-
-console.log("Page contains BUY:", pageText.includes("buy"));
-
-const isAvailable =
-  pageText.includes("buy tickets") ||
-  pageText.includes("book") ||
-  pageText.includes("buy");
-
-    if (isAvailable && !lastStatus) {
-      console.log("🔥 TICKETS AVAILABLE!");
+    if (currentHash !== lastHash) {
+      console.log("🔥 PAGE CHANGED!");
 
       await sendTelegram(
         config.telegramToken,
         config.chatId,
-        "🔥 RCB Tickets LIVE!\nhttps://shop.royalchallengers.com/ticket"
+        "🔥 RCB ticket page updated!\nhttps://shop.royalchallengers.com/ticket"
       );
 
-      lastStatus = true;
-    }  else if (!isAvailable) {
-      console.log("❌ Still not available");
-      lastStatus = false;
+      lastHash = currentHash;
+    } else {
+      console.log("❌ No change");
     }
 
   } catch (err) {
     console.error("Error:", err.message);
-
-  } finally {
-    if (browser) await browser.close();
   }
 }
-
 // ⏱ Run every X seconds
 cron.schedule(`*/${config.interval} * * * * *`, checkTickets);
 
